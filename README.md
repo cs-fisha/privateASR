@@ -101,3 +101,7 @@ curl http://127.0.0.1:45679/v1/health
 ```
 
 若模型下载失败，先在可联网环境启动一次并保留 `models` volume；若 GPU route 失败，检查 `curl http://<GPU_PRIVATE_IP>:<GPU_PORT>/v1/health`、路由和防火墙，使用 WireGuard 时还需检查 AllowedIPs。网关会自动回落 CPU。
+
+# License
+
+This project is licensed under the [MIT License](LICENSE).
