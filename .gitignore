@@ -6,11 +6,20 @@
 !.env.example
 !**/.env.example
 
-# Python and local environments
+# Python environments and caches
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.build-venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Windows client build output
+windows-client/build/
+windows-client/dist/
 
 # Runtime output and local data
 *.log
