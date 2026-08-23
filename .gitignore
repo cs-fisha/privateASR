@@ -1,0 +1,26 @@
+# Runtime configuration and secrets. Keep only sanitized templates.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Python and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime output and local data
+*.log
+*.wav
+*.mp3
+*.m4a
+models/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

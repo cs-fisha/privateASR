@@ -1,0 +1,7 @@
+# Set ASR_PUBLIC_HOST and point DNS at this machine's public IP.
+{$ASR_PUBLIC_HOST:asr.example.com} {
+    reverse_proxy {$ASR_UPSTREAM:127.0.0.1:45679}
+    request_body {
+        max_size {$ASR_MAX_UPLOAD:25MB}
+    }
+}

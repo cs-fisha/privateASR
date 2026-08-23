@@ -1,0 +1,51 @@
+services:
+  asr:
+    build:
+      context: ./server
+      args:
+        HTTP_PROXY: ${ASR_PROXY:-}
+        HTTPS_PROXY: ${ASR_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+    restart: ${ASR_RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${ASR_BIND:-127.0.0.1}:${ASR_PORT:-45679}:8080"
+    environment:
+      ASR_API_TOKEN: ${ASR_API_TOKEN:?set ASR_API_TOKEN in .env}
+      ASR_GPU_URL: ${ASR_GPU_URL:-}
+      ASR_ENGINE: ${ASR_ENGINE:-auto}
+      ASR_MODEL: ${ASR_MODEL:-iic/SenseVoiceSmall}
+      ASR_WHISPER_MODEL: ${ASR_WHISPER_MODEL:-small}
+      ASR_DEFAULT_LANGUAGE: ${ASR_DEFAULT_LANGUAGE:-zh}
+      ASR_REMOVE_FILLERS: ${ASR_REMOVE_FILLERS:-true}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_FUNASR_VAD_MODEL: ${ASR_FUNASR_VAD_MODEL:-fsmn-vad}
+      ASR_FUNASR_MAX_SEGMENT_MS: ${ASR_FUNASR_MAX_SEGMENT_MS:-30000}
+      ASR_WHISPER_BEAM_SIZE: ${ASR_WHISPER_BEAM_SIZE:-5}
+      ASR_MAX_BYTES: ${ASR_MAX_BYTES:-26214400}
+      ASR_GPU_TIMEOUT: ${ASR_GPU_TIMEOUT:-180}
+      ASR_CORRECTOR_URL: ${ASR_CORRECTOR_URL:-}
+      ASR_CORRECTOR_MODEL: ${ASR_CORRECTOR_MODEL:-}
+      ASR_CORRECTOR_KEY: ${ASR_CORRECTOR_KEY:-}
+      ASR_CORRECTOR_PROMPT: ${ASR_CORRECTOR_PROMPT:-}
+      ASR_CORRECTOR_TIMEOUT: ${ASR_CORRECTOR_TIMEOUT:-60}
+      ASR_CORRECTOR_TEMPERATURE: ${ASR_CORRECTOR_TEMPERATURE:-0}
+      ASR_CORRECTOR_FORCE_IPV4: ${ASR_CORRECTOR_FORCE_IPV4:-false}
+      ASR_INFERENCE_TIMEOUT: ${ASR_INFERENCE_TIMEOUT:-300}
+      HTTP_PROXY: ${ASR_PROXY:-}
+      HTTPS_PROXY: ${ASR_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "asr-host.internal:host-gateway"
+    volumes:
+      - models:/root/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health')"]
+      interval: ${ASR_HEALTH_INTERVAL:-30s}
+      timeout: ${ASR_HEALTH_TIMEOUT:-5s}
+      retries: ${ASR_HEALTH_RETRIES:-3}
+volumes:
+  models:
