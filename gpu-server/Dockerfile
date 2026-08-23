@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 WORKDIR /app
 COPY server/requirements-common.txt server/requirements-gpu.txt /app/
 RUN pip3 install --upgrade pip && pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124 && pip3 install -r requirements-gpu.txt
+RUN pip3 install torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 COPY server/app /app/app
 EXPOSE 8080
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

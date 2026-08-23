@@ -24,9 +24,9 @@ curl http://127.0.0.1:45679/v1/health
 
 `ASR_INFERENCE_TIMEOUT` 控制单次模型初始化/推理的最长秒数，默认 300；模型源不可达时返回 503，而不会阻塞整个 HTTP 服务。
 
-`ASR_GPU_URL` 填 GPU 服务器的 WireGuard 地址，例如 `http://10.66.0.2:8080`。网关会强制绕过 HTTP 代理直接访问该私网地址。GPU 不可达时网关自动在本机 CPU 推理；传 `no_fallback=true` 会在 GPU 失败时直接返回 502。GPU Compose 默认只绑定 `127.0.0.1`；通过 WireGuard 部署时，在 GPU 机的 `.env` 将 `ASR_GPU_BIND` 设置为其 WireGuard IP，并用主机防火墙限制来源。
+`ASR_GPU_URL` 填 GPU 服务器的内网地址，例如 `http://10.66.0.2:45680`。网关会强制绕过 HTTP 代理直接访问该私网地址。GPU 不可达时网关自动在本机 CPU 推理；传 `no_fallback=true` 会在 GPU 失败时直接返回 502。GPU Compose 默认只绑定 `127.0.0.1`；部署时在 GPU 机的 `.env` 将 `ASR_GPU_BIND` 设置为其局域网或 WireGuard IP，并用主机防火墙限制来源。
 
-## 2. RTX 3090 GPU 服务器
+## 2. NVIDIA GPU 服务器
 
 GPU 机安装 NVIDIA 驱动、Docker 和 `nvidia-container-toolkit`，确认 `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi` 成功。将 `gpu-server/.env.example` 复制为 `gpu-server/.env`，设置与网关**相同**的 token：
 
@@ -37,11 +37,11 @@ docker compose up -d --build
 curl http://127.0.0.1:8080/v1/health
 ```
 
-建议只通过 WireGuard 暴露 8080，不要直接映射到公网。GPU 机和本机加入同一 WireGuard 网段后，在 GPU 机的 `.env` 设置 `ASR_GPU_BIND=<GPU_WG_IP>`，在网关 `.env` 设置 `ASR_GPU_URL=http://<GPU_WG_IP>:8080`。
+可通过可信局域网或 WireGuard 直连 GPU 服务，不需要额外反向代理；不要把 GPU 端口映射到公网。在 GPU 机的 `.env` 设置 `ASR_GPU_BIND=<GPU_PRIVATE_IP>` 和高位 `ASR_GPU_PORT`，在网关 `.env` 设置 `ASR_GPU_URL=http://<GPU_PRIVATE_IP>:<GPU_PORT>`。多 GPU 机器用从 0 开始的 `ASR_GPU_DEVICE_ID` 固定一张 GPU，避免 Compose 自动选择到正在运行其他任务的设备。
 
 ## 3. WireGuard 边界
 
-在 GPU 机防火墙只允许网关 WireGuard 地址访问 TCP 8080；公网只开放 WireGuard UDP 端口（通常 51820）。不要把 ASR token 放在 URL 中。生产环境可在网关前加 Caddy/Nginx HTTPS 和限流。
+使用 WireGuard 时，在 GPU 机防火墙只允许网关 WireGuard 地址访问 GPU 服务端口；公网只开放 WireGuard UDP 端口（通常 51820）。使用可信局域网直连时，应只绑定内网 IP，并按需限制网关来源。不要把 ASR token 放在 URL 中。生产环境可在网关前加 Caddy/Nginx HTTPS 和限流。
 
 Windows 客户端的 `ASR_URL` 应设置为实际网关的 HTTPS 地址，例如 `https://asr.example.com`。使用 Caddy 时可从 `deploy/Caddyfile.example` 开始配置；使用 Nginx 时将反向代理上游指向 `.env` 中 `ASR_BIND:ASR_PORT` 对应的地址。
 
@@ -90,4 +90,4 @@ docker compose logs -f asr
 curl http://127.0.0.1:45679/v1/health
 ```
 
-若模型下载失败，先在可联网环境启动一次并保留 `models` volume；若 GPU route 失败，检查 `curl http://<GPU_WG_IP>:8080/v1/health`、WireGuard AllowedIPs 和防火墙，网关会自动回落 CPU。
+若模型下载失败，先在可联网环境启动一次并保留 `models` volume；若 GPU route 失败，检查 `curl http://<GPU_PRIVATE_IP>:<GPU_PORT>/v1/health`、路由和防火墙，使用 WireGuard 时还需检查 AllowedIPs。网关会自动回落 CPU。

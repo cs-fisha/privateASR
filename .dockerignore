@@ -1,0 +1,12 @@
+.git
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+models
+*.log
+*.wav
+*.mp3
+*.m4a
