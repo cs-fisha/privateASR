@@ -340,8 +340,11 @@ class HotkeyManager:
         self._handles = new_handles
 
     def clear(self) -> None:
-        for handle in self._handles:
-            keyboard.remove_hotkey(handle)
+        for handle in list(self._handles):
+            try:
+                keyboard.remove_hotkey(handle)
+            except Exception as exc:
+                _log("hotkey_remove_error", error=f"{type(exc).__name__}: {exc}")
         self._handles.clear()
 
 
@@ -451,6 +454,8 @@ class AsrWindow:
         self.record_button.grid(row=0, column=0, sticky="w")
         ttk.Button(controls, text="保存设置", command=self.save_form).grid(
             row=0, column=1, padx=(10, 0))
+        ttk.Button(controls, text="退出程序", command=self.exit).grid(
+            row=0, column=2, padx=(10, 0))
 
         ttk.Separator(outer).grid(row=9, column=0, columnspan=2, sticky="ew")
         ttk.Label(outer, textvariable=self.status_var, style="Status.TLabel").grid(
@@ -668,11 +673,11 @@ class AsrWindow:
 
     def _start_tray(self) -> None:
         menu = pystray.Menu(
-            pystray.MenuItem("显示设置", lambda _icon, _item: self.root.after(0, self.show)),
+            pystray.MenuItem("显示设置", lambda _icon, _item: _notify("show_window")),
             pystray.MenuItem("开始 / 结束录音",
                              lambda _icon, _item: start_toggle_thread()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("退出", lambda _icon, _item: self.root.after(0, self.exit)),
+            pystray.MenuItem("退出", lambda _icon, _item: _notify("exit_requested")),
         )
         self.tray_icon = pystray.Icon("private-asr", self._tray_image(), APP_NAME, menu)
         self.tray_icon.run_detached()
@@ -705,6 +710,11 @@ class AsrWindow:
                     self.finish_hotkey_capture(str(value))
                 elif event == "hotkey_capture_cancel":
                     self.cancel_hotkey_capture()
+                elif event == "show_window":
+                    self.show()
+                elif event == "exit_requested":
+                    self.exit()
+                    return
                 elif event == "toast":
                     text, kind = value
                     self.show_toast(text, kind)
@@ -729,6 +739,8 @@ class AsrWindow:
 
     def exit(self) -> None:
         global recording, stream
+        if self.exiting:
+            return
         self.exiting = True
         recording = False
         if stream:
@@ -738,12 +750,22 @@ class AsrWindow:
             except Exception:
                 pass
             stream = None
-        self._stop_capture_hook()
+        try:
+            self._stop_capture_hook()
+        except Exception as exc:
+            _log("capture_hook_remove_error", error=f"{type(exc).__name__}: {exc}")
         self.hotkeys.clear()
-        if self.tray_icon:
-            self.tray_icon.stop()
-            self.tray_icon = None
-        self.root.destroy()
+        tray_icon = self.tray_icon
+        self.tray_icon = None
+        if tray_icon:
+            try:
+                tray_icon.stop()
+            except Exception as exc:
+                _log("tray_stop_error", error=f"{type(exc).__name__}: {exc}")
+        try:
+            self.root.destroy()
+        except tk.TclError as exc:
+            _log("window_destroy_error", error=f"{type(exc).__name__}: {exc}")
 
 
 def main() -> None:
