@@ -297,6 +297,16 @@ def start_toggle_thread() -> None:
     threading.Thread(target=toggle_recording, daemon=True).start()
 
 
+def normalize_hotkey(value: str) -> str:
+    names = [name.strip() for name in value.split("+") if name.strip()]
+    if not names:
+        raise ValueError("快捷键不能为空。")
+    normalized = keyboard.get_hotkey_name(names)
+    if not normalized:
+        raise ValueError("无法识别这个快捷键。")
+    return normalized
+
+
 class HotkeyManager:
     def __init__(self) -> None:
         self._handles: list[Any] = []
@@ -311,7 +321,7 @@ class HotkeyManager:
                 keyboard.parse_hotkey(hotkey)
             except Exception as exc:
                 raise ValueError(f"{label}格式无效：{hotkey}") from exc
-            normalized.append(hotkey.replace(" ", "").lower())
+            normalized.append(normalize_hotkey(hotkey))
         if len(normalized) != len(set(normalized)):
             raise ValueError("三个快捷键不能重复。")
 
@@ -339,8 +349,8 @@ class AsrWindow:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("650x650")
-        self.root.minsize(570, 590)
+        self.root.geometry("680x680")
+        self.root.minsize(600, 620)
         self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)
         self.hotkeys = HotkeyManager()
         self.tray_icon: pystray.Icon | None = None
@@ -360,6 +370,11 @@ class AsrWindow:
         self.undo_hotkey_var = tk.StringVar(value=current["undo_hotkey"])
         self.start_minimized_var = tk.BooleanVar(value=current["start_minimized"])
         self.status_var = tk.StringVar(value="就绪")
+        self._capture_hook: Any = None
+        self._capture_target: tk.StringVar | None = None
+        self._capture_button: ttk.Button | None = None
+        self._captured_hotkey: str | None = None
+        self._capture_scan_code: int | None = None
 
         self._configure_style()
         self._build()
@@ -407,21 +422,19 @@ class AsrWindow:
                                         textvariable=self.timeout_var)
         self.timeout_spin.grid(row=5, column=1, sticky="ew", pady=6)
 
-        ttk.Label(outer, text="全局快捷键", style="Section.TLabel").grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=(16, 5))
+        hotkey_frame = ttk.LabelFrame(outer, text="全局快捷键", padding=(12, 8))
+        hotkey_frame.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(14, 5))
+        hotkey_frame.columnconfigure(1, weight=1)
         hotkey_rows = (
             ("开始 / 结束录音", self.record_hotkey_var),
             ("切换二次润色", self.correction_hotkey_var),
             ("撤销最近输入", self.undo_hotkey_var),
         )
-        for row, (label, variable) in enumerate(hotkey_rows, start=7):
-            ttk.Label(outer, text=label).grid(row=row, column=0, sticky="w",
-                                              padx=(0, 14), pady=5)
-            ttk.Entry(outer, textvariable=variable).grid(row=row, column=1,
-                                                         sticky="ew", pady=5)
+        for row, (label, variable) in enumerate(hotkey_rows):
+            self._add_hotkey_control(hotkey_frame, row, label, variable)
 
         options = ttk.Frame(outer)
-        options.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(12, 8))
+        options.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(12, 8))
         self.correction_check = ttk.Checkbutton(
             options, text="启用二次润色", variable=self.correction_var,
             command=self.correction_changed)
@@ -431,7 +444,7 @@ class AsrWindow:
                             row=0, column=1, sticky="w", padx=(24, 0))
 
         controls = ttk.Frame(outer)
-        controls.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(6, 14))
+        controls.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(6, 14))
         controls.columnconfigure(0, weight=1)
         self.record_button = ttk.Button(controls, text="开始录音", style="Primary.TButton",
                                         command=start_toggle_thread)
@@ -439,11 +452,11 @@ class AsrWindow:
         ttk.Button(controls, text="保存设置", command=self.save_form).grid(
             row=0, column=1, padx=(10, 0))
 
-        ttk.Separator(outer).grid(row=12, column=0, columnspan=2, sticky="ew")
+        ttk.Separator(outer).grid(row=9, column=0, columnspan=2, sticky="ew")
         ttk.Label(outer, textvariable=self.status_var, style="Status.TLabel").grid(
-            row=13, column=0, columnspan=2, sticky="w", pady=(12, 5))
+            row=10, column=0, columnspan=2, sticky="w", pady=(12, 5))
         result_frame = ttk.Frame(outer)
-        result_frame.grid(row=14, column=0, columnspan=2, sticky="nsew")
+        result_frame.grid(row=11, column=0, columnspan=2, sticky="nsew")
         result_frame.columnconfigure(0, weight=1)
         result_frame.rowconfigure(0, weight=1)
         self.result_text = tk.Text(result_frame, height=5, wrap="word", relief="solid",
@@ -453,12 +466,94 @@ class AsrWindow:
                                          command=self.result_text.yview)
         result_scrollbar.grid(row=0, column=1, sticky="ns")
         self.result_text.configure(yscrollcommand=result_scrollbar.set)
-        outer.rowconfigure(14, weight=1)
+        outer.rowconfigure(11, weight=1)
 
         for widget in (self.url_entry, self.token_entry, self.hotwords_entry,
                        self.timeout_spin):
             widget.bind("<Return>", lambda _event: self.save_form())
         self.language_box.bind("<<ComboboxSelected>>", lambda _event: self.save_form(False))
+
+    def _add_hotkey_control(self, parent: ttk.LabelFrame, row: int, label: str,
+                            variable: tk.StringVar) -> None:
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
+                                           padx=(0, 12), pady=4)
+        ttk.Entry(parent, textvariable=variable, state="readonly").grid(
+            row=row, column=1, sticky="ew", pady=4)
+        button = ttk.Button(parent, text="录制")
+        button.configure(command=lambda: self.start_hotkey_capture(variable, button))
+        button.grid(row=row, column=2, padx=(8, 0), pady=4)
+
+    def start_hotkey_capture(self, target: tk.StringVar, button: ttk.Button) -> None:
+        self.cancel_hotkey_capture()
+        self.hotkeys.clear()
+        self._capture_target = target
+        self._capture_button = button
+        self._captured_hotkey = None
+        self._capture_scan_code = None
+        button.configure(text="请按键...")
+        self.status_var.set("请按下组合键；Esc 取消。支持 F1-F12。")
+
+        def on_key(event: keyboard.KeyboardEvent) -> None:
+            name = event.name or ""
+            if name == "esc":
+                if event.event_type == keyboard.KEY_UP:
+                    _notify("hotkey_capture_cancel")
+                return
+            if event.event_type == keyboard.KEY_DOWN and not keyboard.is_modifier(name):
+                pressed = keyboard.get_hotkey_name()
+                names = pressed.split("+") if pressed else []
+                self._captured_hotkey = keyboard.get_hotkey_name([*names, name])
+                self._capture_scan_code = event.scan_code
+            elif (event.event_type == keyboard.KEY_UP
+                  and event.scan_code == self._capture_scan_code
+                  and self._captured_hotkey):
+                _notify("hotkey_captured", self._captured_hotkey)
+
+        try:
+            self._capture_hook = keyboard.hook(on_key, suppress=True)
+        except Exception as exc:
+            self._capture_hook = None
+            self._restore_current_hotkeys()
+            self._clear_capture_state()
+            messagebox.showerror("无法录制快捷键", str(exc))
+
+    def finish_hotkey_capture(self, hotkey: str) -> None:
+        target = self._capture_target
+        if self._capture_hook is None or target is None:
+            return
+        self._stop_capture_hook()
+        target.set(normalize_hotkey(hotkey))
+        self._clear_capture_state()
+        self._restore_current_hotkeys()
+        self.status_var.set("快捷键已录制，点击“保存设置”后生效。")
+
+    def cancel_hotkey_capture(self) -> None:
+        was_capturing = self._capture_hook is not None
+        self._stop_capture_hook()
+        self._clear_capture_state()
+        if was_capturing:
+            self._restore_current_hotkeys()
+            self.status_var.set("已取消快捷键录制")
+
+    def _stop_capture_hook(self) -> None:
+        if self._capture_hook is not None:
+            keyboard.unhook(self._capture_hook)
+            self._capture_hook = None
+
+    def _clear_capture_state(self) -> None:
+        if self._capture_button is not None:
+            self._capture_button.configure(text="录制")
+        self._capture_target = None
+        self._capture_button = None
+        self._captured_hotkey = None
+        self._capture_scan_code = None
+
+    def _restore_current_hotkeys(self) -> None:
+        try:
+            self._apply_hotkeys(settings_snapshot())
+        except Exception as exc:
+            _log("hotkey_restore_error", error=f"{type(exc).__name__}: {exc}")
+            self.status_var.set(f"快捷键恢复失败：{exc}")
 
     @staticmethod
     def _bindings(values: dict[str, Any]) -> dict[str, tuple[str, Callable[[], None]]]:
@@ -498,12 +593,14 @@ class AsrWindow:
             "hotwords": self.hotwords_var.get().strip(),
             "request_timeout": timeout,
             "enable_correction": self.correction_var.get(),
-            "record_hotkey": self.record_hotkey_var.get().strip().lower(),
-            "correction_hotkey": self.correction_hotkey_var.get().strip().lower(),
-            "undo_hotkey": self.undo_hotkey_var.get().strip().lower(),
+            "record_hotkey": self.record_hotkey_var.get(),
+            "correction_hotkey": self.correction_hotkey_var.get(),
+            "undo_hotkey": self.undo_hotkey_var.get(),
             "start_minimized": self.start_minimized_var.get(),
         }
         try:
+            for key in ("record_hotkey", "correction_hotkey", "undo_hotkey"):
+                changes[key] = normalize_hotkey(changes[key])
             self._apply_hotkeys(changes)
         except ValueError as exc:
             messagebox.showerror("快捷键无效", str(exc))
@@ -597,6 +694,10 @@ class AsrWindow:
                         self.status_var.set("正在录音...")
                 elif event == "status":
                     self.status_var.set(str(value))
+                elif event == "hotkey_captured":
+                    self.finish_hotkey_capture(str(value))
+                elif event == "hotkey_capture_cancel":
+                    self.cancel_hotkey_capture()
                 elif event == "toast":
                     text, kind = value
                     self.show_toast(text, kind)
@@ -630,6 +731,7 @@ class AsrWindow:
             except Exception:
                 pass
             stream = None
+        self._stop_capture_hook()
         self.hotkeys.clear()
         if self.tray_icon:
             self.tray_icon.stop()
