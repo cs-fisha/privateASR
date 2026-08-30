@@ -1,0 +1,50 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build portable executable
+        shell: pwsh
+        run: ./windows-client/build.ps1
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $asset = Resolve-Path "windows-client/dist/PrivateASR.exe"
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  PrivateASR.exe" | Set-Content "windows-client/dist/PrivateASR.exe.sha256" -Encoding ascii
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = @(
+            "windows-client/dist/PrivateASR.exe",
+            "windows-client/dist/PrivateASR.exe.sha256"
+          )
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber --repo "${{ github.repository }}"
+          } else {
+            gh release create $tag $assets --verify-tag --generate-notes --title "PrivateASR $tag" --repo "${{ github.repository }}"
+          }
