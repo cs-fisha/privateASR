@@ -492,6 +492,7 @@ class AsrWindow:
         self._capture_scan_code = None
         button.configure(text="请按键...")
         self.status_var.set("请按下组合键；Esc 取消。支持 F1-F12。")
+        pressed_modifiers: set[str] = set()
 
         def on_key(event: keyboard.KeyboardEvent) -> None:
             name = event.name or ""
@@ -499,10 +500,16 @@ class AsrWindow:
                 if event.event_type == keyboard.KEY_UP:
                     _notify("hotkey_capture_cancel")
                 return
-            if event.event_type == keyboard.KEY_DOWN and not keyboard.is_modifier(name):
-                pressed = keyboard.get_hotkey_name()
-                names = pressed.split("+") if pressed else []
-                self._captured_hotkey = keyboard.get_hotkey_name([*names, name])
+            if keyboard.is_modifier(name):
+                modifier = keyboard.get_hotkey_name([name])
+                if event.event_type == keyboard.KEY_DOWN:
+                    pressed_modifiers.add(modifier)
+                else:
+                    pressed_modifiers.discard(modifier)
+                return
+            if event.event_type == keyboard.KEY_DOWN:
+                self._captured_hotkey = keyboard.get_hotkey_name(
+                    [*pressed_modifiers, name])
                 self._capture_scan_code = event.scan_code
             elif (event.event_type == keyboard.KEY_UP
                   and event.scan_code == self._capture_scan_code
