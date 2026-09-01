@@ -93,7 +93,7 @@ python asr_client.py
 
 `POST /v1/transcribe`，multipart 字段 `file`，请求头 `X-ASR-Token`，可选 query `language=zh|en|auto`、`hotwords=...`、`correct=true|false`。返回 `{"text":"...", "route":"gpu|cpu", "engine":"funasr", "correction":"applied|disabled|failed|unconfigured|skipped"}`。
 
-需要自动标点、术语修正或长文本整体润色时，可在网关 `.env` 设置 `ASR_CORRECTOR_URL`、`ASR_CORRECTOR_MODEL` 和可选的 `ASR_CORRECTOR_KEY`。`ASR_CORRECTOR_PROMPT` 可自定义二次润色的 system prompt；缺失或留空时使用 `.env.example` 中的默认提示词。它调用兼容 OpenAI Chat Completions 的服务；`ASR_CORRECTOR_TIMEOUT` 控制润色调用的最长等待秒数，默认 60。本地模型地址若同时解析到不可用的 IPv6，可设置 `ASR_CORRECTOR_FORCE_IPV4=true`。留空或请求传 `correct=false` 时，仍会执行本地填充词清理、空白规范化和繁转简，但不会进行语义改写。`ASR_REMOVE_FILLERS=false` 可关闭本地填充词清理。
+需要自动标点、术语修正或长文本整体润色时，可在网关 `.env` 设置 `ASR_CORRECTOR_URL`、`ASR_CORRECTOR_MODELS`（逗号分隔的模型列表）和可选的 `ASR_CORRECTOR_KEY`。服务首次请求或到达 `ASR_CORRECTOR_PROBE_INTERVAL`（默认 300 秒）时并发探测列表，记住最快成功的模型；其他请求只调用该模型，若它失败则立即重新探测，减少长期请求量。全部失败时保留原文。旧配置 `ASR_CORRECTOR_MODEL` 仍兼容，也支持逗号分隔列表，并在未设置 `ASR_CORRECTOR_MODELS` 时使用。`ASR_CORRECTOR_PROMPT` 直接以环境变量为准，可自定义二次润色的 system prompt；留空时才使用代码内置默认提示词。它调用兼容 OpenAI Chat Completions 的服务；`ASR_CORRECTOR_TIMEOUT` 控制润色调用的最长等待秒数，默认 60。本地模型地址若同时解析到不可用的 IPv6，可设置 `ASR_CORRECTOR_FORCE_IPV4=true`。留空或请求传 `correct=false` 时，仍会执行本地填充词清理、空白规范化和繁转简，但不会进行语义改写。`ASR_REMOVE_FILLERS=false` 可关闭本地填充词清理。
 
 ## 排查
 
